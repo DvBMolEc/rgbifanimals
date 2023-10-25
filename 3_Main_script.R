@@ -5,7 +5,7 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 #load in the functions
 source("2_Functions.R")
 # Create a rastered world
-tr <- create_rastered_world("Inputs/tr.rdata")
+tr <- create_rastered_world("Inputs/new_tr.rdata")
 # Read a species list
 df <- read.csv("Output/Species_Location.csv")
 # Read coordinates file
