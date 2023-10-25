@@ -6,340 +6,417 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 #### Rarefaction curves ####
 #Plot rarefaction results
-Read_Count_Species_ARMS <- read.csv("Output/Read_Count_Species_ARMS.csv")
-OTU_Table_Rar <- Read_Count_Species_ARMS
-OTU_Table_Rar <- column_to_rownames(OTU_Table_Rar, "Specieslist")
-OTU_Table_Rar <- as.matrix(t(OTU_Table_Rar))
+read_count_species_arms <- read.csv("Output/Read_Count_Species_ARMS.csv")
+otu_table_bar <- read_count_species_arms
+otu_table_bar <- column_to_rownames(otu_table_bar, "specieslist")
+otu_table_bar <- as.matrix(t(otu_table_bar))
 
-Rarefaction_df <- rarecurve(OTU_Table_Rar, step = 20,
-                            col = "blue", 
-                            cex = 0.6, tidy = T)
-ggplot(Rarefaction_df, aes(x = Sample, y = Species, group = Site)) +
-  geom_line(color = "blue", alpha = 0.5) + 
-  #geom_vline(xintercept = 100, linetype = "dashed", color = "black", alpha = 0.6, size = 0.6) +
+rarefaction_df <- rarecurve(otu_table_bar, step = 20,
+                            col = "blue",
+                            cex = 0.6, tidy = TRUE)
+ggplot(rarefaction_df, aes(x = Sample, y = species, group = Site)) +
+  geom_line(color = "blue", alpha = 0.5) +
+  geom_vline(xintercept = 100, linetype = "dashed", color = "black",
+             alpha = 0.6, size = 0.6) +
   theme_bw() +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.05)), breaks = seq(0, 80, 20)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05)),
+                     breaks = seq(0, 80, 20)) +
   scale_x_continuous(expand = c(0, 500)) +
   ylab("Number of species") +
   xlab("Number of sequences")
 
-
-#### Alien Read Fraction and Alien Species Fraction ####
-GBIF_Distance <- read.csv("Output/DistanceOverSea.csv")
-#Remove duplicates
-GBIF_Distance <- unique(GBIF_Distance)
-#Convert distance to km
-GBIF_Distance$distance <- GBIF_Distance$distance/1000
-#Assign alien status
-Alien_Distance_Threshold <- 250
-#Most NAs are assigned due to a bug in the ShortestPath function, where the sampling location and GBIF occurrence are too close to be measured.
-  #Therefore, change al NAs to the maximum potential error from the ShortestPath and assume these are native species
-GBIF_Distance$distance[is.na(GBIF_Distance$distance)] <- 16
-GBIF_Distance$Alien_status <- ifelse(GBIF_Distance$distance > Alien_Distance_Threshold, "YES", "NO")
-rm(Alien_Distance_Threshold)
+#### alien read fraction and alien species fraction ####
+gbif_distance <- read.csv("Output/DistanceOverSea.csv")
+# Remove duplicates
+gbif_distance <- unique(gbif_distance)
+# Convert distance to km
+gbif_distance$distance <- gbif_distance$distance / 1000
+# Assign alien status
+alien_distance_threshold <- 250
+# Most NAs are assigned due to a bug in the ShortestPath function, where
+# the sampling location and GBIF occurrence are too close to be measured.
+# Therefore, change al NAs to the maximum potential error from the ShortestPath
+# and assume these are native species
+gbif_distance$distance[is.na(gbif_distance$distance)] <- 16
+gbif_distance$alien_status <- ifelse(gbif_distance$distance >
+                                       alien_distance_threshold, "YES", "NO")
+rm(alien_distance_threshold)
 #Remove lines where distance is not calculated
-GBIF_Distance <- GBIF_Distance[complete.cases(GBIF_Distance), ]
+gbif_distance <- gbif_distance[complete.cases(gbif_distance), ]
 #Create df with only aliens
-Only_Aliens <- GBIF_Distance %>% filter(Alien_status == "YES") %>% select(Specieslist, name, value, distance)
-Only_Natives <- GBIF_Distance %>% filter(Alien_status == "NO") %>% select(Specieslist, name, value, distance)
-rm(GBIF_Distance)
+only_aliens <- gbif_distance %>%
+  filter(alien_status == "YES") %>%
+  select(specieslist, name, value, distance)
+only_natives <- gbif_distance %>%
+  filter(alien_status == "NO") %>%
+  select(specieslist, name, value, distance)
+rm(gbif_distance)
 #Create factor to be able to assign read count and metadata to alien status
-Alien_Species_Obs <- paste0(Only_Aliens$Specieslist, "_", Only_Aliens$name)
+alien_species_obs <- paste0(only_aliens$specieslist, "_", only_aliens$name)
 #Spread df
-Only_Aliens <- spread(data = Only_Aliens, key = name, value = value)
+only_aliens <- spread(data = only_aliens, key = name, value = value)
 #Prepare main dataframe with read counts to assign alien status
-RC_Species_Obs_Year <- Read_Count_Species_ARMS %>% ungroup() %>% select(Specieslist:ncol(Read_Count_Species_ARMS))
-RC_Species_Obs_Year <- RC_Species_Obs_Year %>% gather(key = "No_Fraction", value = "count", 2:ncol(RC_Species_Obs_Year))
-MetaData <- read.csv("Inputs/MetaData_Adjusted.csv")
-Meta_RC <- MetaData %>% select(-Fraction, -Filename)
-Meta_RC <- left_join(RC_Species_Obs_Year, Meta_RC, by = "No_Fraction")
-Meta_RC$Species_Obs <- paste0(Meta_RC$Specieslist, "_", Meta_RC$Observatory.ID)
+rc_species_obs_year <- read_count_species_arms %>%
+  ungroup() %>%
+  select(specieslist:ncol(read_count_species_arms))
+rc_species_obs_year <- rc_species_obs_year %>%
+  gather(key = "No_fraction", value = "count", 2:ncol(rc_species_obs_year))
+metadata <- read.csv("Inputs/MetaData_Adjusted.csv")
+meta_rc <- metadata %>% select(-fraction, -Filename)
+meta_rc <- left_join(rc_species_obs_year, meta_rc, by = "No_fraction")
+meta_rc$species_Obs <- paste0(meta_rc$specieslist, "_", meta_rc$Observatory.ID)
 #Filter main dataframe to one with only alien species
-Meta_RC_Alien <- Meta_RC %>% filter(Species_Obs %in% Alien_Species_Obs)
+meta_rc_alien <- meta_rc %>% filter(species_Obs %in% alien_species_obs)
 #Remove dupes in order to spread
-Meta_RC <- Meta_RC[!duplicated(Meta_RC),]
-Meta_RC_Alien <- Meta_RC_Alien[!duplicated(Meta_RC_Alien),]
-#Calculate Alien Species Fraction
-SpeciesCount <- Meta_RC %>% 
+meta_rc <- meta_rc[!duplicated(meta_rc), ]
+meta_rc_alien <- meta_rc_alien[!duplicated(meta_rc_alien), ]
+#Calculate alien species fraction
+speciescount <- meta_rc %>%
   filter(count > 0) %>%
-  group_by(No_Fraction) %>%
-  dplyr::summarise(Non_Alien = n_distinct(Specieslist))
-AlienSpeciesCount <- Meta_RC_Alien %>% 
+  group_by(No_fraction) %>%
+  dplyr::summarise(Non_alien = n_distinct(specieslist))
+alienspeciescount <- meta_rc_alien %>%
   filter(count > 0) %>%
-  group_by(No_Fraction) %>%
-  dplyr::summarise(Alien = n_distinct(Specieslist))
-AlienSpeciesFraction <- left_join(SpeciesCount, AlienSpeciesCount, by = "No_Fraction")
-AlienSpeciesFraction$AlienSpeciesFraction <- AlienSpeciesFraction$Alien / (AlienSpeciesFraction$Non_Alien + AlienSpeciesFraction$Alien)
-rm(SpeciesCount, AlienSpeciesCount)
+  group_by(No_fraction) %>%
+  dplyr::summarise(alien = n_distinct(specieslist))
+alienspeciesfraction <- left_join(speciescount, alienspeciescount,
+                                  by = "No_fraction")
+alienspeciesfraction$alienspeciesfraction <- alienspeciesfraction$alien /
+  (alienspeciesfraction$Non_alien + alienspeciesfraction$alien)
+rm(speciescount, alienspeciescount)
 #Spread dfs
-Meta_RC <- Meta_RC %>% select(-Species_Obs) %>% spread(Specieslist, count)
-Meta_RC_Alien <- Meta_RC_Alien %>% select(-Species_Obs) %>% spread(Specieslist, count)
+meta_rc <- meta_rc %>%
+  select(-species_Obs) %>%
+  spread(specieslist, count)
+meta_rc_alien <- meta_rc_alien %>%
+  select(-species_Obs) %>%
+  spread(specieslist, count)
 
 #Fill empty cells with 0
-Meta_RC[is.na(Meta_RC)] <- 0
-Meta_RC_Alien[is.na(Meta_RC_Alien)] <- 0
-#Calculate Alien Read Fraction
-TotalReadCount <- rowSums(Meta_RC[, 15:ncol(Meta_RC)])
-AlienReadCount <- rowSums(Meta_RC_Alien[, 15:ncol(Meta_RC_Alien)])
-AlienReadFraction <- AlienReadCount/TotalReadCount
-Meta_RC$AlienReadFraction <- AlienReadFraction
-Meta_RC <- left_join(Meta_RC, AlienSpeciesFraction, by = "No_Fraction")
-Meta_RC <- Meta_RC %>%
-  select(AlienReadFraction, AlienSpeciesFraction, Non_Alien, Alien, everything())
-rm(TotalReadCount, AlienReadCount)
+meta_rc[is.na(meta_rc)] <- 0
+meta_rc_alien[is.na(meta_rc_alien)] <- 0
+#Calculate alien read fraction
+totalreadcount <- rowSums(meta_rc[, 15:ncol(meta_rc)])
+alienreadcount <- rowSums(meta_rc_alien[, 15:ncol(meta_rc_alien)])
+alienreadfraction <- alienreadcount / totalreadcount
+meta_rc$alienreadfraction <- alienreadfraction
+meta_rc <- left_join(meta_rc, alienspeciesfraction, by = "No_fraction")
+meta_rc <- meta_rc %>%
+  select(alienreadfraction, alienspeciesfraction, Non_alien, alien,
+         everything())
+rm(totalreadcount, alienreadcount)
 
 #Make dataframe which filters on at least 100 summed reads per ARMS
-Meta_RC_100 <- Meta_RC
-Meta_RC_100 <- Meta_RC_100[complete.cases(Meta_RC_100), ]
-Meta_RC_100 <- filter(Meta_RC_100, rowSums(Meta_RC_100[,19:ncol(Meta_RC_100)]) > 100)
+meta_rc_100 <- meta_rc
+meta_rc_100 <- meta_rc_100[complete.cases(meta_rc_100), ]
+meta_rc_100 <- filter(meta_rc_100,
+                      rowSums(meta_rc_100[, 19:ncol(meta_rc_100)]) > 100)
 
 ##### NMDS plot BOLDigger ARMS #####
-Meta_RC[is.na(Meta_RC)] <- 0
-Meta_RC_Alien[is.na(Meta_RC_Alien)] <- 0
+meta_rc[is.na(meta_rc)] <- 0
+meta_rc_alien[is.na(meta_rc_alien)] <- 0
 #Only keep complete cases
-Meta_RC_1000 <- Meta_RC
-Meta_RC_1000 <- Meta_RC_1000[complete.cases(Meta_RC_1000), ]
+meta_rc_1000 <- meta_rc
+meta_rc_1000 <- meta_rc_1000[complete.cases(meta_rc_1000), ]
 #Filter on RC over 1000
-Minimum_RC <- 1000
-Meta_RC_1000 <- filter(Meta_RC_1000, rowSums(Meta_RC_1000[,19:ncol(Meta_RC_1000)]) > Minimum_RC)
-#Select Species composition and environmental variables
-Com <- as.data.frame(Meta_RC_100[, 19:ncol(Meta_RC_100)])
-Env <- Meta_RC_100 %>% select(AlienReadFraction, AlienSpeciesFraction, Country, Observatory.ID, Latitude, Longitude, Depth_m, Monitoring_area, Year, Sample_region_country)
-Com <- sapply(Com, as.numeric)
+minimum_rc <- 1000
+meta_rc_1000 <- filter(meta_rc_1000,
+                       rowSums(meta_rc_1000[, 19:ncol(meta_rc_1000)]) >
+                         minimum_rc)
+#Select species composition and environmental variables
+com <- as.data.frame(meta_rc_100[, 19:ncol(meta_rc_100)])
+env <- meta_rc_100 %>%
+  select(alienreadfraction, alienspeciesfraction, country, Observatory.ID,
+         Latitude, Longitude, Depth_m, Monitoring_area, Year,
+         Sample_region_country)
+com <- sapply(com, as.numeric)
 
 #Calculate nmds
-nmds <- metaMDS(Com, distance = "bray")
-en <- envfit(nmds, Env, permutations = 999, na.rm = T)
+nmds <- metaMDS(com, distance = "bray")
+en <- envfit(nmds, env, permutations = 999, na.rm = TRUE)
 #Adjust dataframe for nicer plot
-data.scores <- scores(nmds)
-data.scores <- as.data.frame(data.scores$sites)
+data_scores <- scores(nmds)
+data_scores <- as.data.frame(data.scores$sites)
 #Select one environmental variable to focus on
-data.scores$Sample_region_country = Env$Sample_region_country
-en_coord_cont = as.data.frame(scores(en, "vectors")) * ordiArrowMul(en) *3
-en_coord_cat = as.data.frame(scores(en, "factors")) 
+data_scores$Sample_region_country <- env$Sample_region_country
+en_coord_cont <- as.data.frame(scores(en, "vectors")) * ordiArrowMul(en) * 3
+en_coord_cat <- as.data.frame(scores(en, "factors"))
 palette <- pals::cols25(length(unique(data.scores$Sample_region_country)))
 #Plot NMDS focussing on the chosen variable
-ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2)) + 
-  geom_point(data = data.scores, aes(colour = Sample_region_country), size = 5, alpha = 0.7) + 
-  theme(axis.title = element_text(size = 10, face = "bold", colour = "grey30"), 
-        panel.background = element_blank(), panel.border = element_rect(fill = NA, colour = "grey30"), 
-        axis.ticks = element_blank(), axis.text = element_blank(), legend.key = element_blank(), 
-        legend.title = element_text(size = 10, face = "bold", colour = "grey30"), 
+ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2)) +
+  geom_point(data = data.scores, aes(colour = Sample_region_country),
+             size = 5, alpha = 0.7) +
+  theme(axis.title = element_text(size = 10, face = "bold", colour = "grey30"),
+        panel.background = element_blank(),
+        panel.border = element_rect(fill = NA, colour = "grey30"),
+        axis.ticks = element_blank(), axis.text = element_blank(),
+        legend.key = element_blank(),
+        legend.title = element_text(size = 10, face = "bold",
+                                    colour = "grey30"),
         legend.text = element_text(size = 9, colour = "grey30")) +
   labs(colour = "Sample region (country)") +
   scale_color_manual(values = palette)
 
 
 ##### STATISTICAL ANALYSES AND VISUALISATION ALIEN READ/SPECIES FRACTION #####
-Comparisons_Mon <- list(c("Industrial port", "Marina"), c("Industrial port", "LHI"), c("Industrial port", "MPA"), 
+comparisons_mon <- list(c("Industrial port", "Marina"),
+                        c("Industrial port", "LHI"),
+                        c("Industrial port", "MPA"),
                         c("Marina", "LHI"), c("Marina", "MPA"),
                         c("LHI", "MPA"))
-ggline(data = Meta_RC_1000, x = "Monitoring_area", y = "AlienSpeciesFraction", add = c("mean_se", "jitter")) +
+ggline(data = meta_rc_1000, x = "Monitoring_area", y = "alienspeciesfraction",
+       add = c("mean_se", "jitter")) +
   stat_compare_means(ref.group = "MPA")
 
-ggplot(Meta_RC_1000, aes(Monitoring_area, AlienSpeciesFraction, color = Country)) + 
+ggplot(meta_rc_1000, aes(Monitoring_area, alienspeciesfraction,
+                         color = country)) +
   geom_boxplot() +
   geom_jitter() +
   stat_compare_means(ref.group = "Marina") +
   theme_pubr() +
   scale_color_manual(values = palette)
 
-##### Alien species versus native #####
-#Measure difference of AlienSpeciesFraction between Monitoring_area
-stat.test <- wilcox_test(Meta_RC, AlienSpeciesFraction ~ Monitoring_area) %>%
+##### alien species versus native #####
+#Measure difference of alienspeciesfraction between Monitoring_area
+stat_test <- wilcox_test(meta_rc, alienspeciesfraction ~ Monitoring_area) %>%
   add_xy_position()
 #plot
-ggboxplot(Meta_RC, x = "Monitoring_area", y = "AlienSpeciesFraction", palette = palette, order = c(unique(stat.test$group1), "MPA"), ) +
-  stat_pvalue_manual(stat.test, hide.ns = F) +
+ggboxplot(meta_rc, x = "Monitoring_area", y = "alienspeciesfraction",
+          palette = palette, order = c(unique(stat_test$group1), "MPA"), ) +
+  stat_pvalue_manual(stat_test, hide.ns = FALSE) +
   scale_y_continuous(expand = c(0, 0.01))
 
 #Stretch df to fit barplot
-Barplot_df <- Meta_RC_100 %>% 
-  select(No_Fraction, Non_Alien, Alien, Monitoring_area, ) %>% 
-  arrange(Monitoring_area, Non_Alien)
+barplot_df <- meta_rc_100 %>%
+  select(No_fraction, Non_alien, alien, Monitoring_area, ) %>%
+  arrange(Monitoring_area, Non_alien)
 #Save PlotOrder
-Barplot_df <- Barplot_df %>% arrange(factor(Monitoring_area, levels = c("Industrial port", "Marina", "LHI", "MPA")))
-PlotOrderMA <- Barplot_df$Monitoring_area
-Barplot_df <- pivot_longer(data = Barplot_df, cols = c(Non_Alien, Alien), names_to = "Species_status")
+barplot_df <- barplot_df %>%
+  arrange(factor(Monitoring_area,
+                 levels = c("Industrial port", "Marina", "LHI", "MPA")))
+plot_order_ma <- barplot_df$Monitoring_area
+barplot_df <- pivot_longer(data = barplot_df, cols = c(Non_alien, alien),
+                           names_to = "species_status")
 #Create the plot
-ggplot(Barplot_df, aes(x = No_Fraction, y = value, fill = Species_status)) +
-  geom_bar(stat="identity") +
+ggplot(barplot_df, aes(x = No_fraction, y = value, fill = species_status)) +
+  geom_bar(stat = "identity") +
   theme_bw() +
-  scale_x_discrete(labels = PlotOrderMA) +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.2)
-        #, text = element_text(size = 30)
+  scale_x_discrete(labels = plot_order_ma) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.2),
+    text = element_text(size = 30)
   ) +
-  aes(x = forcats::fct_inorder(No_Fraction)) +
+  aes(x = forcats::fct_inorder(No_fraction)) +
   xlab("Monitoring area") +
   ylab("Number of species") +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.05)), breaks = seq(0, 80, 20)) +
-  labs(fill='Species status') +
-  scale_fill_manual(labels = c("Alien", "Native"), 
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05)),
+                     breaks = seq(0, 80, 20)) +
+  labs(fill = "species status") +
+  scale_fill_manual(labels = c("alien", "Native"),
                     values = c("grey60", "grey40"))
 
 
 ##### Phyloseq #####
 #OTU Table
 library("tidyverse")
-Read_Count_Species_Fraction <- read.csv("Output/Read_Count_Species_Fraction.csv")
-OTU_Table <- Read_Count_Species_Fraction
-OTU_Table <- column_to_rownames(OTU_Table, "Specieslist")
-OTU_Table <- as.matrix(t(OTU_Table))
+read_count_species_fraction <-
+  read.csv("Output/Read_Count_Species_Fraction.csv")
+otu_table <- read_count_species_fraction
+otu_table <- column_to_rownames(otu_table, "specieslist")
+otu_table <- as.matrix(t(otu_table))
 
-MetaPhylo <- MetaData
-rownames(MetaData) <- MetaData$Filename
+meta_phylo <- metadata
+rownames(metadata) <- metadata$Filename
 
 #Taxonomic info
-Data_LOI <- read.csv("Output/Data_LOI.csv")
-Tax_Info <- Data_LOI %>% 
-  select(Phylum:Specieslist, -Species) %>%
-  distinct() 
-Tax_Info <- Tax_Info[!duplicated(Tax_Info$Specieslist),]
-rownames(Tax_Info) <- Tax_Info$Specieslist
-Tax_Info <- as.matrix(Tax_Info)
+data_loi <- read.csv("Output/Data_LOI.csv")
+tax_info <- data_loi %>%
+  select(Phylum:specieslist, -species) %>%
+  distinct()
+tax_info <- tax_info[!duplicated(tax_info$specieslist), ]
+rownames(tax_info) <- tax_info$specieslist
+tax_info <- as.matrix(tax_info)
 
 #Combine into Phyloseq object
-physeq <- phyloseq(otu_table(OTU_Table, taxa_are_rows = FALSE), 
-                   tax_table(Tax_Info), 
-                   sample_data(MetaData))
+physeq <- phyloseq(otu_table(otu_table, taxa_are_rows = FALSE),
+                   tax_table(tax_info),
+                   sample_data(metadata))
 
 #Add Plot Order
-PlotOrder_phy <- MetaData %>% 
+plot_order_phy <- metadata %>%
   arrange(Sample_region_country, Observatory.ID, Year) %>%
   select(Filename) %>%
   distinct()
-PlotOrder_phy <- as.list(PlotOrder_phy)
+plot_order_phy <- as.list(plot_order_phy)
 sample_data(physeq)$NewID <- factor(sample_names(physeq))
-sample_data(physeq)$NewID <- factor(sample_data(physeq)$NewID, levels = PlotOrder_phy$Filename)
+sample_data(physeq)$NewID <- factor(sample_data(physeq)$NewID,
+                                    levels = plot_order_phy$Filename)
 
 #Remove samples with less than 100 reads
 physeq <- prune_samples(sample_sums(physeq) > 100, physeq)
 
 #Merge samples based on variable by summing read counts
-palette_SRC <- pals::cols25(length(unique(Meta_RC$Sample_region_country)))
+palette_src <- pals::cols25(length(unique(meta_rc$Sample_region_country)))
 #Merge by Sample_region_country...
-mergedphyseq_SRC = merge_samples(physeq, "Sample_region_country")
-plot_heatmap(mergedphyseq_SRC, taxa.order = "Phylum", max.label = 500, taxa.label = "Phylum")
+mergedphyseq_src <- merge_samples(physeq, "Sample_region_country")
+plot_heatmap(mergedphyseq_src, taxa.order = "Phylum", max.label = 500,
+             taxa.label = "Phylum")
 #... or Monitoring_area
-mergedphyseq_MA = merge_samples(physeq, "Monitoring_area")
-plot_heatmap(mergedphyseq_MA, taxa.order = "Phylum", max.label = 500)
+mergedphyseq_ma <- merge_samples(physeq, "Monitoring_area")
+plot_heatmap(mergedphyseq_ma, taxa.order = "Phylum", max.label = 500)
 
 #### Diversity of native species ####
 #Plot diversity
-Richness <- estimate_richness(physeq, measures = c("Observed", "Chao1", "Shannon"))
-Richness <- left_join(rownames_to_column(Richness), rownames_to_column(MetaData), by = "rowname")
-Richness <- Richness %>% arrange(factor(Monitoring_area, levels = c("Industrial port", "Marina", "LHI", "MPA")))
+richness <- estimate_richness(physeq,
+                              measures = c("Observed", "Chao1", "Shannon"))
+richness <- left_join(rownames_to_column(richness),
+                      rownames_to_column(metadata), by = "rowname")
+richness <- richness %>%
+  arrange(factor(Monitoring_area,
+                 levels = c("Industrial port", "Marina", "LHI", "MPA")))
 #Measure difference of Observed between Monitoring_area
-stat.test <- wilcox_test(Richness, Observed ~ Monitoring_area) %>%
+stat_test <- wilcox_test(richness, Observed ~ Monitoring_area) %>%
   add_xy_position()
 #plot diversity of entire species pool
-ggboxplot(Richness, x = "Monitoring_area", y = "Observed", palette = palette) +
-  stat_pvalue_manual(stat.test, hide.ns = T, label = "p.adj", size = 10) +
+ggboxplot(richness, x = "Monitoring_area", y = "Observed", palette = palette) +
+  stat_pvalue_manual(stat_test, hide.ns = TRUE, label = "p.adj", size = 10) +
   theme(text = element_text(size = 30))
 
 #plot diversity of just native species
-stat.test <- wilcox_test(Meta_RC_100, Non_Alien ~ Monitoring_area) %>%
+stat_test <- wilcox_test(meta_rc_100, Non_alien ~ Monitoring_area) %>%
   add_xy_position()
-ggboxplot(Meta_RC_100, x = "Monitoring_area", y = "Non_Alien", palette = palette) +
-  stat_pvalue_manual(stat.test, hide.ns = T, label = "p.adj", size = 10)
+ggboxplot(meta_rc_100, x = "Monitoring_area", y = "Non_alien",
+          palette = palette) +
+  stat_pvalue_manual(stat_test, hide.ns = TRUE, label = "p.adj", size = 10)
 
-#### Alien phyloseq prep ####
-Aliens_OTU <- Read_Count_Species_Fraction
-Aliens_OTU <- Aliens_OTU %>% filter(Specieslist %in% unique(Only_Aliens$Specieslist))
-Aliens_OTU <- column_to_rownames(Aliens_OTU, "Specieslist")
-Aliens_OTU[Aliens_OTU > 0] <- 1
-Aliens_OTU <- as.matrix(Aliens_OTU)
+#### alien phyloseq prep ####
+aliens_otu <- read_count_species_fraction
+aliens_otu <- aliens_otu %>%
+  filter(specieslist %in% unique(only_aliens$specieslist))
+aliens_otu <- column_to_rownames(aliens_otu, "specieslist")
+aliens_otu[aliens_otu > 0] <- 1
+aliens_otu <- as.matrix(aliens_otu)
 
-#Add Alien_Type to Taxonomic info
-As.the.crow.flies <- read.csv("Output/ShortestPath.csv")
+#Add alien_Type to Taxonomic info
+as_the_crow_flies <- read.csv("Output/ShortestPath.csv")
 #Extract observation count, to re-add after gather function
-Observation_Count <- select(As.the.crow.flies, c("Speciesname", "Total.observations", "Unique.locations"))
-As.the.crow.flies <- As.the.crow.flies %>% 
-  select(-Total.observations, -Unique.locations, -Errors) %>% 
+observation_count <- select(as_the_crow_flies,
+                            c("Speciesname", "total.observations",
+                              "Unique.locations"))
+as_the_crow_flies <- as_the_crow_flies %>%
+  select(-total.observations, -Unique.locations, -Errors) %>%
   gather(key = "Observatory.ID", value = "distance_atcf", 2:13)
-As.the.crow.flies <- left_join(As.the.crow.flies, Observation_Count, by = "Speciesname")
+as_the_crow_flies <- left_join(as_the_crow_flies, observation_count,
+                               by = "Speciesname")
 #Convert meters to kilometres for easier reading
-As.the.crow.flies$distance_atcf <- as.numeric(As.the.crow.flies$distance_atcf)
-As.the.crow.flies$distance_atcf <- ceiling(As.the.crow.flies$distance_atcf/1000)
+as_the_crow_flies$distance_atcf <- as.numeric(as_the_crow_flies$distance_atcf)
+as_the_crow_flies$distance_atcf <- ceiling(as_the_crow_flies$distance_atcf /
+                                             1000)
 #Find species with no observation on GBIF
-Cryptogenic <- As.the.crow.flies[is.na(As.the.crow.flies$Total.observations),]
-#Calculate mean distance to closes observation in order to determine Alien_Type
-Mean <- As.the.crow.flies %>% na.omit %>% group_by(Speciesname) %>% summarise_at(vars(distance_atcf), list(name = mean))
-As.the.crow.flies <- left_join(As.the.crow.flies, Mean, by = "Speciesname")
-As.the.crow.flies <- As.the.crow.flies[As.the.crow.flies$Speciesname %in% Only_Aliens$Specieslist,]
-As.the.crow.flies$Alien_Type <- ifelse(As.the.crow.flies$Total.observations < 50 | is.na(As.the.crow.flies$Total.observations), As.the.crow.flies$Alien_Type <- "Cryptogenic", 
-                                       ifelse(As.the.crow.flies$name > 2500, As.the.crow.flies$Alien_Type <- "Hitchhiker", "Range expander"
-                                       )
+cryptogenic <- as_the_crow_flies[is.na(as_the_crow_flies$total.observations), ]
+#Calculate mean distance to closes observation in order to determine alien_Type
+mean <- as_the_crow_flies %>%
+  na.omit %>%
+  group_by(speciesname) %>%
+  summarise_at(vars(distance_atcf), list(name = mean))
+as_the_crow_flies <- left_join(as_the_crow_flies, mean, by = "Speciesname")
+as_the_crow_flies <- as_the_crow_flies[as_the_crow_flies$speciesname %in%
+                                         only_aliens$specieslist, ]
+as_the_crow_flies$alien_Type <- ifelse(as_the_crow_flies$total.observations
+  < 50 |  is.na(as_the_crow_flies$total.observations),
+  as_the_crow_flies$alien_Type <- "Cryptogenic",
+  ifelse(as_the_crow_flies$name > 2500,
+         as_the_crow_flies$alien_Type <-
+           "Hitchhiker", "Range expander")
 )
-#DF with Alien types
-Alien_Type <- As.the.crow.flies %>% select(Speciesname, Alien_Type) %>% unique() %>% arrange(Speciesname)
+#DF with alien types
+alien_type <- as_the_crow_flies %>%
+  select(speciesname, alien_type) %>%
+  unique() %>%
+  arrange(speciesname)
 #Add species with no gbif occurences
-Cryptogenic <- as.data.frame(unique(Cryptogenic$Speciesname))
-Cryptogenic$Alien_Type <- "Cryptogenic"
-colnames(Cryptogenic) <- c("Speciesname", "Alien_Type")
+cryptogenic <- as.data.frame(unique(cryptogenic$speciesname))
+cryptogenic$alien_Type <- "Cryptogenic"
+colnames(cryptogenic) <- c("Speciesname", "Alien_Type")
 
 # Plot native biodiversity and alien species fraction
 library("SciViews")
 palette_4 <- c("#440154", "#12c5ed", "#fde725", "#0fb859")
-ggplot(Meta_RC_100, aes(Non_Alien, AlienSpeciesFraction, color = Monitoring_area)) +
+ggplot(meta_rc_100, aes(Non_alien, alienspeciesfraction,
+                        color = Monitoring_area)) +
   geom_point(size = 8, alpha = 0.7) +
-  stat_smooth(method = lm, formula = y ~ ln(x), inherit.aes = F, data = Meta_RC_100, mapping = aes(Non_Alien, AlienSpeciesFraction)) +
-  stat_regline_equation(formula = y ~ ln(x), inherit.aes = F, data = Meta_RC_100, 
-                        mapping = aes(Non_Alien, AlienSpeciesFraction, label = ..adj.rr.label..), size = 8, label.x = 60, label.y = 0.33) +
-  stat_regline_equation(formula = y ~ ln(x), inherit.aes = F, data = Meta_RC_100, 
-                        mapping = aes(Non_Alien, AlienSpeciesFraction, label = ..eq.label..), size = 8, label.x = 60, label.y = 0.37) +
+  stat_smooth(method = lm, formula = y ~ ln(x), inherit.aes = FALSE,
+              data = meta_rc_100,
+              mapping = aes(Non_alien, alienspeciesfraction)) +
+  stat_regline_equation(formula = y ~ ln(x), inherit.aes = FALSE,
+                        data = meta_rc_100, label.x = 60, label.y = 0.33,
+                        mapping = aes(Non_alien, alienspeciesfraction,
+                                      label = ..adj.rr.label..),
+                        size = 8) +
+  stat_regline_equation(formula = y ~ ln(x), inherit.aes = FALSE,
+                        data = meta_rc_100, label.x = 60, label.y = 0.37,
+                        mapping = aes(Non_alien, alienspeciesfraction,
+                                      label = ..eq.label..), size = 8) +
   theme_pubclean(base_size = 30) +
   scale_color_manual(values = palette_4) +
-  xlab("Species with confirmed presence") +
+  xlab("species with confirmed presence") +
   ylab("New alien species fraction")
 
-#Add Alien_type to Taxonomix info, prepare for phyloseq
-Aliens_Tax <- as.data.frame(Tax_Info)
-Aliens_Tax <- Aliens_Tax %>% filter(Specieslist %in% Alien_Type$Speciesname)
-Aliens_Tax <- left_join(Aliens_Tax, Alien_Type, by = c("Specieslist" = "Speciesname"))
-rownames(Aliens_Tax) <- Aliens_Tax$Specieslist
-Alien_Order <- Aliens_Tax %>% arrange(Alien_Type) %>% select(Specieslist)
-Aliens_Tax <- as.matrix(Aliens_Tax)
+#Add alien_type to Taxonomix info, prepare for phyloseq
+aliens_tax <- as.data.frame(tax_info)
+aliens_tax <- aliens_tax %>% filter(specieslist %in% alien_Type$speciesname)
+aliens_tax <- left_join(aliens_tax, alien_Type,
+                        by = c("specieslist" = "Speciesname"))
+rownames(aliens_tax) <- aliens_tax$specieslist
+alien_order <- aliens_tax %>% arrange(alien_Type) %>% select(specieslist)
+aliens_tax <- as.matrix(aliens_tax)
 
 #### Phyloseq of aliens ####
-Alien_physeq <- phyloseq(otu_table(Aliens_OTU, taxa_are_rows = TRUE), 
-                         tax_table(Aliens_Tax), 
-                         sample_data(MetaData))
+alien_physeq <- phyloseq(otu_table(aliens_otu, taxa_are_rows = TRUE),
+                         tax_table(aliens_tax),
+                         sample_data(metadata))
 
 #Add plotorder of samples
-PlotOrder_Al <- MetaData %>% arrange(factor(Monitoring_area, levels = c("Industrial Port", "Marina", "LHI", "MPA"))) %>% select(Filename)
-sample_data(Alien_physeq)$NewID <- factor(sample_names(Alien_physeq))
-sample_data(Alien_physeq)$NewID <- factor(sample_data(Alien_physeq)$NewID, levels = PlotOrder_Al$Filename)
+plot_order_al <- metadata %>%
+  arrange(factor(Monitoring_area, levels =
+                   c("Industrial Port", "Marina", "LHI", "MPA"))) %>%
+  select(Filename)
+sample_data(alien_physeq)$NewID <- factor(sample_names(alien_physeq))
+sample_data(alien_physeq)$NewID <- factor(sample_data(alien_physeq)$NewID,
+                                          levels = plot_order_al$Filename)
 
 #Remove samples with less than 100 alien reads
-Alien_physeq <- prune_samples(sample_sums(Alien_physeq) > 100, Alien_physeq)
+alien_physeq <- prune_samples(sample_sums(alien_physeq) > 100, alien_physeq)
 
 #Plot heatmap of SRC
-Alienphyseq_SRC = merge_samples(Alien_physeq, "Sample_region_country")
-plot_heatmap(Alienphyseq_SRC, taxa.order = Alien_Order$Specieslist, taxa.label = "Alien_Type", )
+alienphyseq_src <- merge_samples(alien_physeq, "Sample_region_country")
+plot_heatmap(alienphyseq_src, taxa.order = alien_order$specieslist,
+             taxa.label = "Alien_Type", )
 
 #Plot heatmap of MA
-Alienphyseq_MA = merge_samples(Alien_physeq, "Monitoring_area")
-plot_heatmap(Alienphyseq_MA, taxa.order = Alien_Order$Specieslist, taxa.label = "Alien_Type")
+alienphyseq_ma <- merge_samples(alien_physeq, "Monitoring_area")
+plot_heatmap(alienphyseq_ma, taxa.order = alien_order$specieslist,
+             taxa.label = "Alien_Type")
 
-#Merge Alien types
-Range_expander <- Alien_Type[Alien_Type$Alien_Type == "Range expander", ]
-Hitchhiker <- Alien_Type[Alien_Type$Alien_Type == "Hitchhiker" ,]
-Cryptogenic <- Alien_Type[Alien_Type$Alien_Type == "Cryptogenic" ,]
+#Merge alien types
+range_expander <- alien_Type[alien_Type$alien_Type == "Range expander", ]
+hitchhiker <- alien_Type[alien_Type$alien_Type == "Hitchhiker", ]
+cryptogenic <- alien_Type[alien_Type$alien_Type == "Cryptogenic", ]
 
-#Merge Alien types and Monitoring areas
-x1 = merge_taxa(Alienphyseq_MA, Range_expander$Speciesname, 2)
-x2 = merge_taxa(x1, Hitchhiker$Speciesname, 2)
-x3 = merge_taxa(x2, Cryptogenic$Speciesname, 2)
+#Merge alien types and Monitoring areas
+x1 <- merge_taxa(alienphyseq_ma, range_expander$speciesname, 2)
+x2 <- merge_taxa(x1, hitchhiker$speciesname, 2)
+x3 <- merge_taxa(x2, cryptogenic$speciesname, 2)
 #plot heatmap of merged monitoring type and merged alien type
-plot_heatmap(x3, taxa.order = c("Acartia hudsonica","Cephalothrix spiralis", "Amblyosyllis madeirensis"), sample.order = c("Industrial port", "Marina", "LHI", "MPA")) +
+plot_heatmap(x3, taxa.order = c("Acartia hudsonica", "Cephalothrix spiralis",
+                                "Amblyosyllis madeirensis"),
+             sample.order = c("Industrial port", "Marina", "LHI", "MPA")) +
   scale_y_discrete(labels = c("Range expanders", "Hithchikers", "Cryptogenic"))
 
-#Statistics on Alien type
-Alien_Type_Stats <- as.data.frame(otu_table(x3))
-colnames(Alien_Type_Stats) <- c("Range expanders", "Cryptogenic", "Hitchhikers")
-chisq.test(Alien_Type_Stats)
-Alien_Type_Stats <- rownames_to_column(Alien_Type_Stats, "Monitoring_area")
-Alien_Type_Stats <- pivot_longer(Alien_Type_Stats, cols = c("Range expanders", "Cryptogenic", "Hitchhikers"))
-
-
+#Statistics on alien type
+alien_type_stats <- as.data.frame(otu_table(x3))
+colnames(alien_type_stats) <- c("Range expanders", "Cryptogenic", "Hitchhikers")
+chisq.test(alien_type_stats)
+alien_type_stats <- rownames_to_column(alien_type_stats, "Monitoring_area")
+alien_type_stats <- pivot_longer(alien_type_stats, cols = c("Range expanders",
+                                                            "Cryptogenic",
+                                                            "Hitchhikers"))
